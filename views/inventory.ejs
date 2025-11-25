@@ -22,6 +22,16 @@
             <li class="nav-item">
               <a class="nav-link" href="/logout">Logout</a>
             </li> 
+          <% if (user && user.role === 'admin') { %>
+            <!-- Admin-only Navbar Items -->
+            <li class="nav-item">
+              <a class="nav-link" href="/admin/dashboard">Dashboard</a>
+            </li>
+          <% } else { %>
+            <li class="nav-item">
+              <a class="nav-link" href="/orders">Order History</a>
+            </li>
+          <% } %>
           </ul>
         </div>
       </div>

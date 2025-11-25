@@ -16,8 +16,13 @@
     "ejs": "^3.1.10",
     "express": "^5.1.0",
     "express-session": "^1.18.2",
+    "fs": "^0.0.1-security",
     "multer": "^2.0.2",
     "mysql2": "^3.15.3",
-    "nodemon": "^3.1.10"
+    "nodemailer": "^7.0.10",
+    "nodemon": "^3.1.10",
+    "path": "^0.12.7",
+    "pdfkit": "^0.17.2",
+    "router": "^2.2.0"
   }
 }
