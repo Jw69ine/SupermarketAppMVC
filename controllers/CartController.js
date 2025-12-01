@@ -2,6 +2,7 @@
 const db = require('../db');
 const Product = require('../models/Product');
 
+
 /** --- DB HELPERS --- **/
 function saveCartToDB(userId, cart, cb) {
     db.query(
@@ -30,6 +31,7 @@ function clearCartDB(userId, cb) {
     db.query('DELETE FROM carts WHERE userId=?', [userId], cb);
 }
 
+
 /** --- CART CONTROLLER MAIN --- **/
 const CartController = {
     // List all available products
@@ -50,10 +52,10 @@ const CartController = {
         });
     },
 
-    // Add product to cart (session and DB)
+    // Add product to cart (session and DB) with stock check
     add(req, res) {
         const productId = req.params.id;
-        const quantity = parseInt(req.body.quantity, 10) || 1;
+        const quantityToAdd = parseInt(req.body.quantity, 10) || 1;
 
         Product.getById(productId, (err, product) => {
             if (err) return res.status(500).json({ error: 'Database error', details: err });
@@ -61,18 +63,33 @@ const CartController = {
 
             if (!req.session.cart) req.session.cart = [];
 
-            const existing = req.session.cart.find(item => item.productId === parseInt(productId, 10));
+            const existing = req.session.cart.find(
+                item => item.productId === parseInt(productId, 10)
+            );
+            const currentQtyInCart = existing ? existing.quantity : 0;
+            const newTotalQty = currentQtyInCart + quantityToAdd;
+
+            // Stock check: do not allow more than available inventory
+            if (newTotalQty > product.quantity) {
+                req.flash(
+                    'messages',
+                    [`Not enough stock. Available: ${product.quantity}, in cart: ${currentQtyInCart}.`]
+                );
+                return res.redirect('/shopping');
+            }
+
             if (existing) {
-                existing.quantity += quantity;
+                existing.quantity = newTotalQty;
             } else {
                 req.session.cart.push({
                     productId: parseInt(productId, 10),
                     productName: product.productName,
                     price: product.price,
-                    quantity,
+                    quantity: quantityToAdd,
                     image: product.image
                 });
             }
+
             // Sync to DB after session update
             saveCartToDB(req.session.user.id, req.session.cart, (err) => {
                 if (err) console.error('Cart DB save error:', err);
@@ -126,7 +143,11 @@ const CartController = {
     // Show cart
     list(req, res) {
         const cart = req.session.cart || [];
-        res.render('cart', { cart, user: req.session.user });
+        res.render('cart', {
+            cart,
+            user: req.session.user,
+            messages: req.flash('messages') // support feedback like "Cart cleared!" or stock errors
+        });
     },
 
     // Load persistent cart from DB after login

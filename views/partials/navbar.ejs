@@ -1,0 +1,47 @@
+<nav class="navbar navbar-expand-sm bg-dark navbar-dark">
+    <div class="container-fluid">
+    <a class="navbar-brand" href="/">Supermarket App</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#collapsibleNavbar">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="collapsibleNavbar">
+        <ul class="navbar-nav">
+        <% if (user && user.role === 'admin') { %>
+            <li class="nav-item">
+            <a class="nav-link" href="/addProduct">Add Product</a>
+            </li>
+            <li class="nav-item">
+            <a class="nav-link" href="/admin/dashboard">Dashboard</a>
+            </li>
+        <% } %>
+        <% if (user) { %>
+            <li class="nav-item">
+            <a class="nav-link" href="/shopping">Shop</a>
+            </li>
+            <li class="nav-item">
+            <a class="nav-link" href="/cart">Cart</a>
+            </li>
+        <% } %>
+        </ul>
+        <ul class="navbar-nav ms-auto">
+        <% if (user && user.role === 'user') { %>
+            <li class="nav-item">
+            <a class="nav-link" href="/orders">Order History</a>
+            </li>
+        <% } %>
+        <% if (user) { %>
+            <li class="nav-item">
+            <a class="nav-link" href="/logout">Logout</a>
+            </li>
+        <% } else { %>
+            <li class="nav-item">
+            <a class="nav-link" href="/login">Login</a>
+            </li>
+            <li class="nav-item">
+            <a class="nav-link" href="/register">Register</a>
+            </li>
+        <% } %>
+        </ul>
+    </div>
+    </div>
+</nav>

@@ -5,6 +5,7 @@ const PDFDocument = require('pdfkit');
 const CartController = require('./CartController');
 const nodemailer = require('nodemailer');
 
+
 // Helper: format JS Date -> MySQL DATETIME 'YYYY-MM-DD HH:mm:ss'
 function formatDateForSQL(dateObj) {
     const pad = n => n < 10 ? '0' + n : n;
@@ -16,61 +17,111 @@ function formatDateForSQL(dateObj) {
         pad(dateObj.getSeconds());
 }
 
-// Helper: Generate PDF Receipt
+
 function generateReceiptPDF(order, user, filepath) {
     return new Promise((resolve, reject) => {
         const doc = new PDFDocument({ margin: 50 });
         const stream = fs.createWriteStream(filepath);
         doc.pipe(stream);
-        // PDF rendering code unchanged...
-        doc.fontSize(26).font('Helvetica-Bold').text('SUPERMARKET', { align: 'left' })
-            .moveDown(0.5).fontSize(18).font('Helvetica').fillColor('#555')
-            .text('Official Receipt', { align: 'left' }).fillColor('#000').moveDown();
-        doc.fontSize(12);
-        doc.text(`Receipt #: `, { continued: true }).font('Helvetica-Bold').text(order.id).font('Helvetica');
-        doc.text(`Date: `, { continued: true }).font('Helvetica-Bold').text(order.orderDate).font('Helvetica');
-        doc.text(`Customer: `, { continued: true }).font('Helvetica-Bold').text(user.username + ' (' + user.email + ')').font('Helvetica');
-        doc.text(`Payment Method: `, { continued: true }).font('Helvetica-Bold').text(order.paymentMethod).moveDown();
-        doc.moveTo(doc.x, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
-        doc.moveDown();
-        doc.fontSize(14)
-            .font('Helvetica-Bold')
-            .text('Item', 60, doc.y, { continued: true })
-            .text('Qty', 260, doc.y, { width: 60, align: 'right', continued: true })
-            .text('Unit Price', 330, doc.y, { width: 100, align: 'right', continued: true })
-            .text('Line Total', 450, doc.y, { width: 90, align: 'right' })
-            .moveDown(0.5);
-        doc.font('Helvetica').fontSize(12);
-        order.items.forEach(item => {
-            doc
-                .text(item.productName, 60, doc.y, { continued: true })
-                .text(item.quantity, 260, doc.y, { width: 60, align: 'right', continued: true })
-                .text(`$${Number(item.price).toFixed(2)}`, 330, doc.y, { width: 100, align: 'right', continued: true })
-                .text(`$${(item.price * item.quantity).toFixed(2)}`, 450, doc.y, { width: 90, align: 'right' });
-        });
+
+        // Header - centered
+        doc.fontSize(26).font('Helvetica-Bold').text('SUPERMARKET', { align: 'center' });
+        doc.moveDown(0.2);
+
+        // Date below title
+        doc.fontSize(12).font('Helvetica').fillColor('#666')
+            .text(`Date: ${order.orderDate}`, { align: 'center' })
+            .fillColor('#000')
+            .moveDown(0.2);
+
+        // Official Receipt subtitle
+        doc.fontSize(12).font('Helvetica').fillColor('#666')
+            .text('Official Receipt', { align: 'center' })
+            .fillColor('#000')
+            .moveDown(0.6);
+
+        // Divider
+        doc.strokeColor('#333').lineWidth(1);
+        doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+        doc.moveDown(0.4);
+
+        // Receipt details - all on left
+        doc.fontSize(12).font('Helvetica');
+        doc.text(`Receipt #: ${order.id}`);
+        doc.text(`Customer: ${user.username}`);
+        doc.text(`Email: ${user.email}`);
+        doc.text(`Payment Method: ${order.paymentMethod}`);
+        doc.moveDown(0.6);
+
+        // Divider
+        doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
         doc.moveDown(0.5);
-        doc.moveTo(60, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke();
-        doc.fontSize(14).font('Helvetica-Bold')
-            .text('Total Paid:', 340, doc.y + 5, { width: 100, align: 'right', continued: true })
-            .fillColor('#1e7e34')
-            .text(`$${Number(order.total).toFixed(2)}`, 450, doc.y + 5, { width: 90, align: 'right' })
-            .fillColor('#000');
-        doc.moveDown(2);
+
+        // Items table header
+        const itemStartY = doc.y;
+        doc.fontSize(12).font('Helvetica-Bold');
+        doc.text('Item', 50, itemStartY, { width: 200 })
+            .text('Qty', 250, itemStartY, { width: 50, align: 'center' })
+            .text('Unit Price', 310, itemStartY, { width: 80, align: 'right' })
+            .text('Total', 490, itemStartY, { width: 70, align: 'right' });
+
+        doc.moveDown(0.7);
+
+        // Divider under header
+        doc.strokeColor('#ddd').lineWidth(0.5);
+        doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+        doc.moveDown(0.3);
+
+        // Items
+        doc.fontSize(12).font('Helvetica').fillColor('#000');
+        order.items.forEach(item => {
+            const lineTotal = (Number(item.price) * item.quantity).toFixed(2);
+            const itemY = doc.y;
+            
+            doc.text(item.productName, 50, itemY, { width: 190 })
+                .text(item.quantity.toString(), 250, itemY, { width: 50, align: 'center' })
+                .text(`$${Number(item.price).toFixed(2)}`, 310, itemY, { width: 80, align: 'right' })
+                .text(`$${lineTotal}`, 490, itemY, { width: 70, align: 'right' });
+
+            doc.moveDown(0.5);
+        });
+
+        // Divider
+        doc.strokeColor('#333').lineWidth(1);
+        doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+        doc.moveDown(0.4);
+
+        // Total - right aligned
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e7e34');
+        const totalY = doc.y;
+        doc.text('TOTAL PAID:', 310, totalY, { width: 80, align: 'right' })
+            .fontSize(12)
+            .text(`$${Number(order.total).toFixed(2)}`, 490, totalY, { width: 70, align: 'right' });
+
+        doc.fillColor('#000').moveDown(1.5);
+
+        // Divider
+        doc.strokeColor('#ddd').lineWidth(0.5);
+        doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+        doc.moveDown(0.6);
+
+        // Thank you - single line, centered
         doc.fontSize(12).font('Helvetica-Oblique').fillColor('#1e7e34')
-            .text('Thank you for shopping with us!', { align: 'center' });
+            .text('Thank you for shopping with us!', 50, doc.y, { width: doc.page.width - 100, align: 'center' });
+
         doc.end();
         stream.on('finish', resolve);
         stream.on('error', reject);
     });
 }
 
-// Helper: Email PDF. Pass in recipient email; cb gets (emailError, emailSent).
+// Helper: Email PDF
 function emailReceiptPDF(pdfPath, toEmail, orderId, cb) {
     const transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
             user: 'WebAppTesting67@gmail.com',
-            pass: 'aodcvynoiosnovbq' // app password
+            pass: 'aodcvynoiosnovbq'
         }
     });
     const mailOptions = {
@@ -84,12 +135,13 @@ function emailReceiptPDF(pdfPath, toEmail, orderId, cb) {
     };
     transporter.sendMail(mailOptions, (err, info) => {
         if ((!err && info && info.accepted && info.accepted.length > 0) || (info && info.response && info.response.includes("OK"))) {
-            cb(null, toEmail); // success
+            cb(null, toEmail);
         } else {
             cb(err ? (err.message || "Error sending email") : "Unknown error", null);
         }
     });
 }
+
 
 module.exports = {
     showCheckout(req, res) {
@@ -98,6 +150,7 @@ module.exports = {
         const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
         res.render('checkout', { cart, user, total, errors: req.flash('error') });
     },
+
 
     confirmOrder: async function(req, res) {
         const cart = req.session.cart || [];
@@ -129,13 +182,13 @@ module.exports = {
                     req.flash('error', 'Could not save order');
                     return res.redirect('/checkout');
                 }
-                // --- 1. Inventory Adjustment ---
-                // For each product in the cart: decrement quantity in the DB
+
+                // Inventory Adjustment
                 const updateStockPromises = cart.map(item => {
                     return new Promise((resolve, reject) => {
                         db.query(
                             'UPDATE products SET quantity = quantity - ? WHERE id = ? AND quantity >= ?',
-                            [item.quantity, item.productId, item.quantity], // use your product PK (id)
+                            [item.quantity, item.productId, item.quantity],
                             (err, result) => {
                                 if (err) reject(err);
                                 else if (result.affectedRows === 0) reject(new Error('Insufficient stock for ' + item.productName));
@@ -144,13 +197,13 @@ module.exports = {
                         );
                     });
                 });
+
                 try {
                     await Promise.all(updateStockPromises);
                 } catch (stockErr) {
                     req.flash('error', 'Order failed: ' + stockErr.message);
                     return res.redirect('/cart');
                 }
-                // --- End inventory adjustment ---
 
                 const orderId = result.insertId;
                 const orderObj = {
@@ -166,6 +219,7 @@ module.exports = {
                 if (!fs.existsSync(receiptsDir)) {
                     fs.mkdirSync(receiptsDir, { recursive: true });
                 }
+
                 await generateReceiptPDF(orderObj, user, receiptPath);
 
                 CartController.clearCartAll(req, () => {});
@@ -180,7 +234,7 @@ module.exports = {
         );
     },
 
-    // Email receipt to user-supplied address (POST from receipt page/email form)
+
     emailReceipt: async function(req, res) {
         const orderId = req.params.orderId;
         const userEmail = req.body.email && req.body.email.trim();
@@ -193,15 +247,18 @@ module.exports = {
                 receiptDownloadPath: `/receipts/receipt-${orderId}.pdf`
             });
         }
+
         db.query('SELECT * FROM orders WHERE id=?', [orderId], async (err, results) => {
             if (err || results.length === 0) {
                 return res.render('receipt', { emailError: "Order not found.", cart: [], total: 0, orderId });
             }
+
             const order = results[0];
             const cart = JSON.parse(order.items);
             const total = order.total;
             const tempUser = { username: "Guest", email: userEmail };
             const receiptPath = path.join(__dirname, '..', 'public', 'receipts', `receipt-${orderId}.pdf`);
+
             if (!fs.existsSync(receiptPath)) {
                 await generateReceiptPDF(
                     {
@@ -215,6 +272,7 @@ module.exports = {
                     receiptPath
                 );
             }
+
             emailReceiptPDF(receiptPath, userEmail, orderId, (emailError, emailSent) => {
                 res.render('receipt', {
                     user: req.session.user || tempUser,
@@ -228,6 +286,7 @@ module.exports = {
             });
         });
     },
+
 
     history(req, res) {
         const user = req.session.user;

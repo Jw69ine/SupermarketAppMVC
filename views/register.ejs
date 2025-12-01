@@ -19,7 +19,7 @@
       padding: 2rem 2rem 1.7rem 2rem;
     }
     .form-label { font-weight: 500; }
-    .form-control, .form-select {
+    .form-control {
       border-radius: 8px;
       min-height: 48px;
       font-size: 1.07rem;
@@ -36,24 +36,7 @@
   </style>
 </head>
 <body>
-  <nav class="navbar navbar-expand-sm bg-dark navbar-dark shadow-sm mb-5">
-      <div class="container-fluid">
-        <a class="navbar-brand" href="/">Supermarket App</a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#collapsibleNavbar">
-          <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="collapsibleNavbar">
-          <ul class="navbar-nav ms-auto">
-            <li class="nav-item">
-              <a class="nav-link" href="/register">Register</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="/login">Login</a>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </nav>
+  <%- include('partials/navbar', { user: user }) %>
   <div class="container register-container">
     <div class="card">
       <h1 class="mb-4 text-center">Register</h1>
@@ -94,13 +77,8 @@
                 autocomplete="tel"
                 <% if (formData && formData.contact) { %> value="<%= formData.contact %>" <% } else { %> value="" <% } %>>
         </div>
-        <div>
-          <label for="role" class="form-label">Role:</label>
-          <select id="role" name="role" class="form-select" required>
-            <option value="user" <% if (formData && formData.role === 'user') { %> selected <% } %>>User</option>
-            <option value="admin" <% if (formData && formData.role === 'admin') { %> selected <% } %>>Admin</option>
-          </select>
-        </div>
+        
+        <!-- No role selection here -->
         <button type="submit" class="btn btn-primary w-100 mt-2">Register</button>
       </form>
     </div>

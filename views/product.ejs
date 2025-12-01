@@ -49,27 +49,10 @@
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-sm bg-dark navbar-dark shadow-sm">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">Supermarket App</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#collapsibleNavbar">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="collapsibleNavbar">
-                <ul class="navbar-nav ms-auto">
-                    <% if (user.role === "admin") { %>
-                        <li class="nav-item"><a class="nav-link" href="/inventory">Inventory</a></li> 
-                        <li class="nav-item"><a class="nav-link" href="/addProduct">Add new product</a></li> 
-                    <% } %>
-                    <li class="nav-item"><a class="nav-link" href="/logout">Logout</a></li> 
-                </ul>
-            </div>
-        </div>
-    </nav>
-
+<%- include('partials/navbar', { user: user }) %>
     <div class="container-fluid center-wrap">
-      <% if (product) { %>
-          <div class="popout-card mx-auto">
+        <% if (product) { %>
+            <div class="popout-card mx-auto">
             <div class="text-center">
                 <img src="/images/<%= product.image %>" class="product-img-lg" alt="Product Image">
             </div>

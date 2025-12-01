@@ -7,98 +7,138 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <title>Supermarket App</title>
   <style>
-    body { background: #f6f8fa; }
-    .product-table td, .product-table th { vertical-align: middle !important; }
-    .product-img {
-      max-width: 70px;
-      max-height: 70px;
-      border-radius: 10px;
-      box-shadow: 0 1px 8px rgba(35,95,164, 0.1);
-      background: #fff;
-      padding: 4px;
-    }
-    .buy-select { min-width: 55px; border-radius: 7px; }
-    .buy-btn { border-radius: 8px; font-size: 1rem; min-width: 85px; }
+    body { background: #f4f6fb; }
     .navbar { margin-bottom: 1.5rem; }
+
+    .page-header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    .page-header h2 {
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .page-header p {
+      color: #6c757d;
+      margin-bottom: 0;
+    }
+
+    .product-card {
+      border-radius: 18px;
+      box-shadow: 0 6px 18px rgba(35, 95, 164, 0.10);
+      border: none;
+      overflow: hidden;
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+    .product-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 26px rgba(35, 95, 164, 0.17);
+    }
+    .product-img-wrapper {
+      height: 130px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #fdfbff, #f0f5ff);
+    }
+    .product-img-wrapper img {
+      max-height: 90px;
+      max-width: 90px;
+      border-radius: 14px;
+      background: #fff;
+      padding: 6px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+    }
+    .product-name {
+      font-weight: 600;
+      font-size: 1.05rem;
+    }
+    .price-text {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #235fa4;
+    }
+    .stock-badge {
+      font-size: 0.85rem;
+    }
+    .qty-input {
+      max-width: 80px;
+      text-align: center;
+      border-radius: 8px;
+    }
+    .buy-btn {
+      border-radius: 10px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
   </style>
 </head>
 <body>
   <!-- Navbar -->
-  <nav class="navbar navbar-expand-sm bg-dark navbar-dark shadow-sm">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="/">Supermarket App</a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#collapsibleNavbar">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-      <div class="collapse navbar-collapse" id="collapsibleNavbar">
-        <ul class="navbar-nav ms-auto">
-          <li class="nav-item">
-            <a class="nav-link" href="/cart">View Cart</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="/logout">Logout</a>
-          </li>
-          <% if (user && user.role === 'admin') { %>
-            <li class="nav-item">
-              <a class="nav-link" href="/admin/dashboard">Dashboard</a>
-            </li>
-          <% } else { %>
-            <li class="nav-item">
-              <a class="nav-link" href="/orders">Order History</a>
-            </li>
-          <% } %>
-        </ul>
+  <%- include('partials/navbar', { user: user }) %>
+
+  <% const msgList = (typeof messages !== 'undefined' && messages) ? messages : []; %>
+
+  <div class="container pb-4">
+    <!-- Flash messages -->
+    <% if (msgList.length > 0) { %>
+      <div class="alert alert-info mt-2">
+        <% msgList.forEach(function(msg) { %>
+          <div><%= msg %></div>
+        <% }) %>
       </div>
+    <% } %>
+
+    <p class="text-secondary mt-1 mb-1">Welcome, <%= user.username %> (<%= user.role %>)</p>
+
+    <div class="page-header">
+      <h2>Products from Supermarket</h2>
+      <p>Pick what you need and add straight to your cart.</p>
     </div>
-  </nav>
 
-  <div class="container">
-    <p class="text-secondary mt-1 mb-3">Welcome, <%= user.username %> (<%= user.role %>)</p>
-    <div class="text-center mb-4"><h2 class="fw-bold">Products from Supermarket</h2></div>
-
-    <div class="table-responsive">
-      <table class="table table-hover product-table align-middle text-center shadow-sm bg-white rounded">
-        <thead class="table-light">
-          <tr>
-            <th>Product Name</th>
-            <th>Product Image</th>
-            <th>Quantity<br>(Stock)</th>
-            <th>Price</th>
-            <th>Quantity</th>
-            <th>Buy</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% for(let i=0; i < products.length; i++) { %>
-            <tr>
-              <td>
-                <a href="/product/<%= products[i].id %>" class="text-primary text-decoration-none">
-                  <%= products[i].productName %>
+    <div class="row g-4">
+      <% for (let i = 0; i < products.length; i++) { 
+            const p = products[i];
+            const maxQty = Math.min(p.quantity, 999);
+      %>
+        <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+          <div class="card product-card h-100">
+            <div class="product-img-wrapper">
+              <img src="images/<%= p.image %>" alt="image of <%= p.productName %>">
+            </div>
+            <div class="card-body d-flex flex-column">
+              <h5 class="product-name mb-1">
+                <a href="/product/<%= p.id %>" class="text-decoration-none text-dark">
+                  <%= p.productName %>
                 </a>
-              </td>
-              <td>
-                <img src="images/<%= products[i].image %>" class="product-img" alt="image">
-              </td>
-              <td><%= products[i].quantity %></td>
-              <td class="fw-semibold">$<%= products[i].price.toFixed(2) %></td>
-              <td>
-                <select class="form-select buy-select mx-auto"
-                        onchange="document.getElementById('quantity-<%= products[i].id %>').value = this.value;">
-                  <% for (let q = 1; q <= 5; q++) { %>
-                    <option value="<%= q %>"><%= q %></option>
-                  <% } %>
-                </select>
-              </td>
-              <td>
-                <form action="/add-to-cart/<%= products[i].id %>" method="POST" style="display:inline;">
-                  <input type="hidden" name="quantity" id="quantity-<%= products[i].id %>" value="1">
-                  <button type="submit" class="btn btn-primary buy-btn">Buy</button>
+              </h5>
+              <p class="mb-1 price-text">$<%= p.price.toFixed(2) %></p>
+
+              <% if (p.quantity > 0) { %>
+                <span class="badge bg-light text-dark border stock-badge mb-2">
+                  In stock: <strong><%= p.quantity %></strong>
+                </span>
+
+                <form action="/add-to-cart/<%= p.id %>" method="POST" class="mt-auto">
+                  <div class="d-flex align-items-center justify-content-between mb-2">
+                    <label for="quantity-<%= p.id %>" class="mb-0 me-2 small text-muted">Quantity</label>
+                    <input type="number"
+                            name="quantity"
+                            class="form-control qty-input"
+                            id="quantity-<%= p.id %>"
+                            value="1"
+                            min="1"
+                            max="<%= maxQty %>">
+                  </div>
+                  <button type="submit" class="btn btn-primary w-100 buy-btn">Add to Cart</button>
                 </form>
-              </td>
-            </tr>
-          <% } %>
-        </tbody>
-      </table>
+              <% } else { %>
+                <span class="badge bg-danger mt-3 align-self-start">Out of stock</span>
+              <% } %>
+            </div>
+          </div>
+        </div>
+      <% } %>
     </div>
   </div>
 </body>

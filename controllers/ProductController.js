@@ -19,7 +19,9 @@ const ProductController = {
             } else {
                 return res.render('shopping', {
                     products,
-                    user: req.session.user
+                    user: req.session.user,
+                    // flash messages used for stock warnings etc.
+                    messages: req.flash('messages')
                 });
             }
         });
@@ -94,7 +96,7 @@ const ProductController = {
         console.log('Received update form:', req.body);
 
         const id = req.params.id;
-        // Fix: if no new file, keep old image
+        // If no new file, keep old image
         const fileImage =
             req.file && req.file.filename
                 ? req.file.filename

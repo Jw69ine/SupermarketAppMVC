@@ -120,6 +120,13 @@ app.post('/cart/remove/:id', checkAuthenticated, (req, res) => {
     CartController.delete(req, res);
 });
 
+app.post('/cart/clear', checkAuthenticated, (req, res) => {
+    CartController.clearCartAll(req, () => {
+    req.flash('messages', ['Cart cleared!']);
+    res.redirect('/cart');
+});
+});
+
 
 // Show cart
 app.get('/cart', checkAuthenticated, (req, res) => {
@@ -154,15 +161,27 @@ app.get('/users/:id', checkAuthenticated, checkAdmin, UserController.showProfile
 
 // Registration and login
 app.get('/register', (req, res) => {
-    res.render('register', { messages: req.flash('error'), formData: req.flash('formData')[0] });
+    res.render('register', {
+        user: req.session.user || null, // send user so navbar partial always works
+        messages: req.flash('error'),
+        formData: req.flash('formData')[0]
+    });
 });
-app.post('/register', validateRegistration, (req, res) => {
+
+// Registration POST route should ignore role from the form and always set role='user'
+app.post('/register', (req, res) => {
+    req.body.role = 'user'; // Always enforce role = user
     UserController.add(req, res);
 });
 
+
 // -------- LOGIN (with cart load on success) --------
 app.get('/login', (req, res) => {
-    res.render('login', { messages: req.flash('success'), errors: req.flash('error') });
+    res.render('login', {
+        user: req.session.user || null,     // Ensures navbar partial always works
+        messages: req.flash('success'),
+        errors: req.flash('error')
+    });
 });
 
 app.post('/login', (req, res) => {
