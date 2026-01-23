@@ -41,19 +41,24 @@
       box-shadow: 0 2px 8px rgba(60,60,120,0.06);
     }
     .cart-actions .btn-primary { margin-right: 1rem; }
+
+    .qty-input { max-width: 90px; text-align: center; }
+    .qty-btn { width: 40px; }
+
     @media (max-width: 700px) {
       .cart-card { padding: 1rem 0.5rem; }
       .cart-actions a { min-width: 120px; font-size: 0.95rem; }
+      .qty-input { max-width: 70px; }
     }
   </style>
 </head>
 <body>
 <%- include('partials/navbar', { user: user }) %>
-  
+
   <div class="container">
     <div class="cart-card">
       <h2 class="mb-4 fw-bold" style="letter-spacing:-1px;">Shopping Cart</h2>
-      
+
       <!-- Flash messages -->
       <% if (messages && messages.length > 0) { %>
         <div class="alert alert-info mb-3">
@@ -62,7 +67,7 @@
           <% }) %>
         </div>
       <% } %>
-      
+
       <% if (cart.length === 0) { %>
         <p>Your cart is empty.</p>
       <% } else { %>
@@ -72,39 +77,76 @@
               <tr>
                 <th>Product</th>
                 <th>Image</th>
-                <th>Quantity</th>
+                <th style="width:240px;">Quantity</th>
                 <th>Total</th>
                 <th class="text-center">Remove</th>
               </tr>
             </thead>
+
             <tbody>
               <% let total = 0; %>
+
               <% for (let i = 0; i < cart.length; i++) { %>
                 <tr>
                   <td><%= cart[i].productName %></td>
+
                   <td>
                     <img src="/images/<%= cart[i].image %>" class="img-thumbnail" alt="Product image">
                   </td>
-                  <td><%= cart[i].quantity %></td>
+
+                  <td>
+                    <form class="qty-form d-flex justify-content-center"
+                          action="/update-cart/<%= cart[i].productId %>"
+                          method="POST"
+                          data-product-id="<%= cart[i].productId %>">
+
+                      <div class="input-group" style="max-width: 220px;">
+                        <button type="button"
+                                class="btn btn-outline-secondary qty-btn qty-minus"
+                                aria-label="Decrease quantity">-</button>
+
+                        <input type="number"
+                              name="quantity"
+                              class="form-control qty-input"
+                              value="<%= cart[i].quantity %>"
+                              min="1"
+                              step="1" />
+
+                        <button type="button"
+                                class="btn btn-outline-secondary qty-btn qty-plus"
+                                aria-label="Increase quantity">+</button>
+                      </div>
+                    </form>
+
+                    <small class="text-muted d-block mt-1">
+                      Tip: type a number, click outside to update.
+                    </small>
+                  </td>
+
                   <td class="fw-semibold">$<%= (cart[i].price * cart[i].quantity).toFixed(2) %></td>
+
                   <td class="text-center">
                     <form action="/cart/remove/<%= cart[i].productId %>" method="POST" style="display:inline;">
                       <button type="submit" class="btn btn-danger btn-sm">Remove</button>
                     </form>
                   </td>
                 </tr>
+
                 <% total += cart[i].price * cart[i].quantity; %>
               <% }; %>
             </tbody>
           </table>
         </div>
+
         <div class="d-flex justify-content-between align-items-center my-4">
           <div>
             <h4 class="cart-total-row mb-0">Total: $<%= total.toFixed(2) %></h4>
           </div>
+
           <div class="cart-actions">
             <a href="/checkout" class="btn btn-primary">Proceed to Checkout</a>
             <a href="/shopping" class="btn btn-outline-secondary">Back to Shopping</a>
+
             <form action="/cart/clear" method="POST" style="display:inline;">
               <button type="submit" class="btn btn-danger ms-2">Clear Cart</button>
             </form>
@@ -113,5 +155,35 @@
       <% } %>
     </div>
   </div>
+
+  <script>
+    function clampInt(value, min) {
+      const n = parseInt(value, 10);
+      if (Number.isNaN(n)) return min;
+      return Math.max(min, n);
+    }
+
+    document.querySelectorAll('.qty-form').forEach(form => {
+      const input = form.querySelector('input[name="quantity"]');
+      const minus = form.querySelector('.qty-minus');
+      const plus = form.querySelector('.qty-plus');
+
+      input.addEventListener('change', () => {
+        input.value = clampInt(input.value, 1);
+        form.submit();
+      });
+
+      minus.addEventListener('click', () => {
+        input.value = clampInt(input.value, 1) - 1;
+        input.value = clampInt(input.value, 1);
+        form.submit();
+      });
+
+      plus.addEventListener('click', () => {
+        input.value = clampInt(input.value, 1) + 1;
+        form.submit();
+      });
+    });
+  </script>
 </body>
 </html>

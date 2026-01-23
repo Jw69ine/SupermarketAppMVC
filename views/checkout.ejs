@@ -35,12 +35,10 @@
         .btn { border-radius: 8px; }
         .btn-success { font-size: 1.12rem; padding: 0.7rem 1.8rem; }
         .btn-secondary { padding: 0.7rem 1.5rem; }
-        .fade-in {
-            animation: fadeIn 0.45s;
-        }
+        .fade-in { animation: fadeIn 0.45s; }
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px);}
-            to { opacity: 1; transform: none;}
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: none; }
         }
     </style>
 </head>
@@ -68,28 +66,28 @@
     <div class="invoice-summary mb-4 fade-in">
         <table class="table invoice-table align-middle mb-0">
             <thead class="table-light">
-                <tr>
-                    <th>Product</th>
-                    <th>Unit Price</th>
-                    <th>Quantity</th>
-                    <th class="right">Line Total</th>
-                </tr>
+            <tr>
+                <th>Product</th>
+                <th>Unit Price</th>
+                <th>Quantity</th>
+                <th class="right">Line Total</th>
+            </tr>
             </thead>
             <tbody>
-                <% cart.forEach(item => { %>
+            <% cart.forEach(item => { %>
                 <tr>
                     <td><%= item.productName %></td>
                     <td>$<%= Number(item.price).toFixed(2) %></td>
                     <td><%= item.quantity %></td>
                     <td class="right fw-semibold">$<%= (item.price * item.quantity).toFixed(2) %></td>
                 </tr>
-                <% }) %>
+            <% }) %>
             </tbody>
             <tfoot>
-                <tr class="table-light">
-                    <td colspan="3" class="right fw-bold fs-5">Subtotal</td>
-                    <td class="right fw-bold fs-5">$<%= Number(total).toFixed(2) %></td>
-                </tr>
+            <tr class="table-light">
+                <td colspan="3" class="right fw-bold fs-5">Subtotal</td>
+                <td class="right fw-bold fs-5">$<%= Number(total).toFixed(2) %></td>
+            </tr>
             </tfoot>
         </table>
     </div>
@@ -97,63 +95,173 @@
     <!-- PAYMENT SECTION -->
     <div class="payment-section shadow-sm fade-in">
         <h4 class="mb-4 section-title">Payment</h4>
-        <form action="/checkout/confirm" method="POST" enctype="multipart/form-data" autocomplete="off">
+
+        <!-- Keep action for BankTransfer only; Stripe/PayPal will not submit this form -->
+        <form id="checkoutForm" action="/checkout/confirm" method="POST" enctype="multipart/form-data" autocomplete="off">
             <div class="mb-4">
                 <label for="paymentMethod" class="form-label">Payment Method</label>
                 <select name="paymentMethod" id="paymentMethod" class="form-select form-select-lg" required>
-                    <option value="Card">Credit/Debit Card</option>
-                    <option value="Crypto">Cryptocurrency</option>
+                    <option value="Card">Credit/Debit Card (Stripe)</option>
+                    <option value="PayPal">PayPal</option>
                     <option value="BankTransfer">Bank Transfer</option>
                 </select>
             </div>
 
-            <!-- Card Fields -->
-            <div id="cardFields" style="display:none">
-                <input type="text" name="cardName" placeholder="Cardholder Name" class="form-control form-control-lg mb-3" />
-                <input type="text" name="cardNumber" placeholder="Card Number" class="form-control form-control-lg mb-3" maxlength="20"/>
-                <input type="text" name="cardExpiry" placeholder="Expiry (MM/YY)" class="form-control form-control-lg mb-3" maxlength="5"/>
-                <input type="text" name="cardCVC" placeholder="CVC" class="form-control form-control-lg mb-3" maxlength="4"/>
+            <!-- Stripe Card Payment -->
+            <div id="stripeFields" style="display:none;">
+                <div class="mb-4 p-4 border rounded"
+                     style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                    <h5 class="mb-3">Secure Stripe Payment</h5>
+                    <p class="mb-3">Pay $<%= Number(total).toFixed(2) %> securely with card.</p>
+                    <button type="button" id="stripePayButton" class="btn btn-light w-100">
+                        Pay Now with Stripe
+                    </button>
+                    <small class="mt-2 d-block text-center opacity-75">
+                        Test card: 4242 4242 4242 4242 (any future expiry, any CVC)
+                    </small>
+                </div>
             </div>
 
-            <!-- Crypto Fields -->
-            <div id="cryptoFields" style="display:none">
-                <div class="mb-2">
-                    <label class="form-label text-primary">Pay to this address: <span class="fw-bold">0xDEADBEEF...</span></label>
+            <!-- PayPal -->
+            <div id="paypalFields" style="display:none;">
+                <div class="mb-4 p-4 border rounded" style="background:#fff3cd;">
+                    <h5 class="mb-3">Pay with PayPal</h5>
+                    <div id="paypal-button-container"></div>
+                    <small class="d-block mt-2 text-muted">
+                        Sandbox/testing uses your PayPal sandbox buyer account.
+                    </small>
                 </div>
-                <input type="text" name="cryptoTxId" placeholder="Your transaction ID (optional for mock)" class="form-control form-control-lg mb-3" />
             </div>
 
             <!-- Bank Fields -->
             <div id="bankFields" style="display:none">
                 <div class="mb-2">
-                    <label class="form-label text-primary">Transfer to: <span class="fw-bold">Bank XYZ, #123-456-789</span></label>
+                    <label class="form-label text-primary">
+                        Transfer to: <span class="fw-bold">Bank XYZ, #123-456-789</span>
+                    </label>
                 </div>
                 <input type="file" name="bankScreenshot" class="form-control form-control-lg mb-2" />
                 <small class="text-muted ms-1">Upload screenshot of transfer/receipt.</small>
             </div>
 
             <div class="d-flex mt-4 gap-2">
-                <button type="submit" class="btn btn-success flex-fill shadow-sm">Pay & Confirm Order</button>
+                <button id="confirmBtn" type="submit" class="btn btn-success flex-fill shadow-sm">
+                    Pay & Confirm Order
+                </button>
                 <a href="/cart" class="btn btn-secondary flex-fill">Back to Cart</a>
             </div>
         </form>
     </div>
 </div>
 
-<!-- Interactivity -->
 <script>
-    // Dynamic display of fields based on payment type
-    document.getElementById('paymentMethod').addEventListener('change', function() {
-        document.getElementById('cardFields').style.display = this.value === 'Card' ? '' : 'none';
-        document.getElementById('cryptoFields').style.display = this.value === 'Crypto' ? '' : 'none';
-        document.getElementById('bankFields').style.display = this.value === 'BankTransfer' ? '' : 'none';
+    function togglePaymentFields(method) {
+        document.getElementById('stripeFields').style.display = (method === 'Card') ? '' : 'none';
+        document.getElementById('paypalFields').style.display = (method === 'PayPal') ? '' : 'none';
+        document.getElementById('bankFields').style.display = (method === 'BankTransfer') ? '' : 'none';
+
+        // Only show normal submit for BankTransfer
+        document.getElementById('confirmBtn').style.display =
+            (method === 'BankTransfer') ? '' : 'none';
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const paymentMethodEl = document.getElementById('paymentMethod');
+        const checkoutForm = document.getElementById('checkoutForm');
+
+        togglePaymentFields(paymentMethodEl.value);
+
+        paymentMethodEl.addEventListener('change', function() {
+            togglePaymentFields(this.value);
+        });
+
+        // Prevent accidental form submit (e.g. Enter key) for Stripe/PayPal
+        checkoutForm.addEventListener('submit', function(e) {
+            const method = paymentMethodEl.value;
+            if (method !== 'BankTransfer') e.preventDefault();
+        });
+
+        // Stripe button -> create checkout session -> redirect to Stripe-hosted URL
+        document.getElementById('stripePayButton').addEventListener('click', async () => {
+            try {
+                const resp = await fetch('/checkout/create-stripe-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+
+                const data = await resp.json();
+                if (!resp.ok || !data.url) {
+                    alert(data.error || 'Stripe session creation failed.');
+                    return;
+                }
+
+                window.location.href = data.url;
+            } catch (e) {
+                console.error(e);
+                alert('Stripe error. Check console.');
+            }
+        });
     });
-    window.onload = function() {
-        var method = document.getElementById('paymentMethod').value;
-        document.getElementById('cardFields').style.display = method === 'Card' ? '' : 'none';
-        document.getElementById('cryptoFields').style.display = method === 'Crypto' ? '' : 'none';
-        document.getElementById('bankFields').style.display = method === 'BankTransfer' ? '' : 'none';
-    };
 </script>
+
+<!-- PayPal JS SDK (Buttons) -->
+<script src="https://www.paypal.com/sdk/js?client-id=<%= paypalClientId %>&currency=SGD"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        if (!window.paypal) return;
+
+        paypal.Buttons({
+        createOrder: async function () {
+            const res = await fetch('/api/paypal/create-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+            // no need to send amount; server reads session cart
+            });
+
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+            console.error('PayPal create-order failed:', res.status, data);
+            throw new Error(data.message || data.error || 'PayPal create-order failed');
+            }
+
+            if (!data.id) {
+            console.error('Server did not return order id:', data);
+            throw new Error('Server did not return order id');
+            }
+
+            return data.id;
+        },
+
+        onApprove: async function (data) {
+            const res = await fetch('/api/paypal/capture-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderID: data.orderID })
+            });
+
+            const result = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+            console.error('PayPal capture-order failed:', res.status, result);
+            throw new Error(result.message || result.error || 'PayPal capture failed');
+            }
+
+            if (result && result.redirectUrl) {
+            window.location.href = result.redirectUrl;
+            } else {
+            window.location.href = '/orders';
+            }
+        },
+
+        onError: function (err) {
+            console.error('PayPal Buttons error:', err);
+            alert(err && err.message ? err.message : 'PayPal error. Check console.');
+        }
+        }).render('#paypal-button-container');
+    });
+</script>
+
 </body>
 </html>
