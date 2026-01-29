@@ -81,7 +81,6 @@
                     <td><%= order.orderDate %></td>
                     <td><%= order.paymentMethod %></td>
                     <td>
-                        <!-- Nested table of order items -->
                         <table class="table table-sm inner-table mb-0">
                             <thead>
                                 <tr>
@@ -136,6 +135,7 @@
     <% } else { %>
         <div class="alert alert-info text-center mb-0">No orders yet.</div>
     <% } %>
+
     <div class="text-end">
         <a href="/shopping" class="btn btn-primary">Back to Shopping</a>
     </div>

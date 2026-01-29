@@ -1,33 +1,27 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
     <meta charset="UTF-8">
     <title>Checkout & Invoice</title>
+
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"/>
-    <%- include('partials/navbar', { user: user }) %>
+
     <style>
         body { background: #f4f7fa; }
         .invoice-header {
-            background: linear-gradient(90deg, #e3f0fa 0, #f7fafe 100%);
-            padding: 2rem 2rem 1.25rem 2rem;
-            border-radius: 16px;
-            box-shadow: 0 4px 18px rgba(0,0,0,0.07);
+        background: linear-gradient(90deg, #e3f0fa 0, #f7fafe 100%);
+        padding: 2rem 2rem 1.25rem 2rem;
+        border-radius: 16px;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.07);
         }
         .invoice-summary, .payment-section {
-            background: #fff;
-            border-radius: 16px;
-            box-shadow: 0 4px 18px rgba(0,0,0,0.10);
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.10);
         }
-        .invoice-summary {
-            margin-bottom: 2.5rem;
-            padding: 2rem 1.5rem 1rem 1.5rem;
-        }
-        .payment-section {
-            padding: 2.3rem 2rem 2rem 2rem;
-        }
-        .invoice-table td, .invoice-table th {
-            vertical-align: middle !important;
-        }
+        .invoice-summary { margin-bottom: 2.5rem; padding: 2rem 1.5rem 1rem 1.5rem; }
+        .payment-section { padding: 2.3rem 2rem 2rem 2rem; }
+        .invoice-table td, .invoice-table th { vertical-align: middle !important; }
         .right { text-align: right; }
         .section-title { color: #235fa4; font-weight: 700; }
         .form-label { font-weight: 600; }
@@ -37,33 +31,33 @@
         .btn-secondary { padding: 0.7rem 1.5rem; }
         .fade-in { animation: fadeIn 0.45s; }
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: none; }
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: none; }
         }
     </style>
-</head>
-<body>
-<div class="container my-5">
+    </head>
 
-    <!-- INVOICE HEADER -->
-    <div class="invoice-header d-flex justify-content-between align-items-center mb-4 fade-in">
+    <body>
+    <%- include('partials/navbar', { user: user }) %>
+
+    <div class="container my-5">
+        <div class="invoice-header d-flex justify-content-between align-items-center mb-4 fade-in">
         <div>
             <h2 class="mb-1 section-title">Supermarket Invoice</h2>
             <p class="mb-0 small text-secondary">
-                Invoice #: <strong>INV-<%= Date.now() %></strong><br>
-                Date: <strong><%= new Date().toLocaleDateString() %></strong>
+            Invoice #: <strong>INV-<%= Date.now() %></strong><br>
+            Date: <strong><%= new Date().toLocaleDateString() %></strong>
             </p>
         </div>
         <div>
             <div class="text-end small">
-                <strong>Billed to:</strong><br>
-                <span><%= user.username %> (<%= user.email %>)</span>
+            <strong>Billed to:</strong><br>
+            <span><%= user.username %> (<%= user.email %>)</span>
             </div>
         </div>
-    </div>
+        </div>
 
-    <!-- INVOICE SUMMARY TABLE -->
-    <div class="invoice-summary mb-4 fade-in">
+        <div class="invoice-summary mb-4 fade-in">
         <table class="table invoice-table align-middle mb-0">
             <thead class="table-light">
             <tr>
@@ -76,10 +70,10 @@
             <tbody>
             <% cart.forEach(item => { %>
                 <tr>
-                    <td><%= item.productName %></td>
-                    <td>$<%= Number(item.price).toFixed(2) %></td>
-                    <td><%= item.quantity %></td>
-                    <td class="right fw-semibold">$<%= (item.price * item.quantity).toFixed(2) %></td>
+                <td><%= item.productName %></td>
+                <td>$<%= Number(item.price).toFixed(2) %></td>
+                <td><%= item.quantity %></td>
+                <td class="right fw-semibold">$<%= (item.price * item.quantity).toFixed(2) %></td>
                 </tr>
             <% }) %>
             </tbody>
@@ -90,82 +84,91 @@
             </tr>
             </tfoot>
         </table>
-    </div>
+        </div>
 
-    <!-- PAYMENT SECTION -->
-    <div class="payment-section shadow-sm fade-in">
+        <div class="payment-section shadow-sm fade-in">
         <h4 class="mb-4 section-title">Payment</h4>
 
-        <!-- Keep action for BankTransfer only; Stripe/PayPal will not submit this form -->
         <form id="checkoutForm" action="/checkout/confirm" method="POST" enctype="multipart/form-data" autocomplete="off">
             <div class="mb-4">
-                <label for="paymentMethod" class="form-label">Payment Method</label>
-                <select name="paymentMethod" id="paymentMethod" class="form-select form-select-lg" required>
-                    <option value="Card">Credit/Debit Card (Stripe)</option>
-                    <option value="PayPal">PayPal</option>
-                    <option value="BankTransfer">Bank Transfer</option>
-                </select>
+            <label for="paymentMethod" class="form-label">Payment Method</label>
+            <select name="paymentMethod" id="paymentMethod" class="form-select form-select-lg" required>
+                <option value="Card">Credit/Debit Card (Stripe)</option>
+                <option value="PayPal">PayPal</option>
+                <option value="PayNow">PayNow (HitPay)</option>
+                <option value="BankTransfer">Bank Transfer</option>
+            </select>
             </div>
 
-            <!-- Stripe Card Payment -->
+            <!-- Stripe -->
             <div id="stripeFields" style="display:none;">
-                <div class="mb-4 p-4 border rounded"
-                     style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-                    <h5 class="mb-3">Secure Stripe Payment</h5>
-                    <p class="mb-3">Pay $<%= Number(total).toFixed(2) %> securely with card.</p>
-                    <button type="button" id="stripePayButton" class="btn btn-light w-100">
-                        Pay Now with Stripe
-                    </button>
-                    <small class="mt-2 d-block text-center opacity-75">
-                        Test card: 4242 4242 4242 4242 (any future expiry, any CVC)
-                    </small>
-                </div>
+            <div class="mb-4 p-4 border rounded"
+                style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <h5 class="mb-3">Secure Stripe Payment</h5>
+                <p class="mb-3">Pay $<%= Number(total).toFixed(2) %> securely with card.</p>
+                <button type="button" id="stripePayButton" class="btn btn-light w-100">Pay Now with Stripe</button>
+                <small class="mt-2 d-block text-center opacity-75">
+                Test card: 4242 4242 4242 4242 (any future expiry, any CVC)
+                </small>
+            </div>
             </div>
 
             <!-- PayPal -->
             <div id="paypalFields" style="display:none;">
-                <div class="mb-4 p-4 border rounded" style="background:#fff3cd;">
-                    <h5 class="mb-3">Pay with PayPal</h5>
-                    <div id="paypal-button-container"></div>
-                    <small class="d-block mt-2 text-muted">
-                        Sandbox/testing uses your PayPal sandbox buyer account.
-                    </small>
-                </div>
+            <div class="mb-4 p-4 border rounded" style="background:#fff3cd;">
+                <h5 class="mb-3">Pay with PayPal</h5>
+                <div id="paypal-button-container"></div>
+                <small class="d-block mt-2 text-muted">
+                Sandbox/testing uses your PayPal sandbox buyer account.
+                </small>
+            </div>
             </div>
 
-            <!-- Bank Fields -->
-            <div id="bankFields" style="display:none">
-                <div class="mb-2">
-                    <label class="form-label text-primary">
-                        Transfer to: <span class="fw-bold">Bank XYZ, #123-456-789</span>
-                    </label>
+            <!-- PayNow (HitPay) -->
+            <div id="paynowFields" style="display:none;">
+            <div class="mb-4 p-4 border rounded" style="background:#e8f7ff;">
+                <h5 class="mb-2">Pay with PayNow (HitPay)</h5>
+                <div class="small text-muted mb-3">
+                You will be redirected to HitPay secure checkout to scan PayNow QR and complete payment.
                 </div>
-                <input type="file" name="bankScreenshot" class="form-control form-control-lg mb-2" />
-                <small class="text-muted ms-1">Upload screenshot of transfer/receipt.</small>
+                <button type="button" id="hitpayPayNowBtn" class="btn btn-primary w-100">
+                PayNow via HitPay
+                </button>
+                <div id="hitpayStatus" class="small text-muted mt-2"></div>
+            </div>
+            </div>
+
+            <!-- Bank -->
+            <div id="bankFields" style="display:none">
+            <div class="mb-2">
+                <label class="form-label text-primary">
+                Transfer to: <span class="fw-bold">Bank XYZ, #123-456-789</span>
+                </label>
+            </div>
+            <input type="file" name="bankScreenshot" class="form-control form-control-lg mb-2" />
+            <small class="text-muted ms-1">Upload screenshot of transfer/receipt.</small>
             </div>
 
             <div class="d-flex mt-4 gap-2">
-                <button id="confirmBtn" type="submit" class="btn btn-success flex-fill shadow-sm">
-                    Pay & Confirm Order
-                </button>
-                <a href="/cart" class="btn btn-secondary flex-fill">Back to Cart</a>
+            <button id="confirmBtn" type="submit" class="btn btn-success flex-fill shadow-sm">Pay & Confirm Order</button>
+            <a href="/cart" class="btn btn-secondary flex-fill">Back to Cart</a>
             </div>
         </form>
+        </div>
     </div>
-</div>
 
-<script>
-    function togglePaymentFields(method) {
+    <script>
+        function togglePaymentFields(method) {
         document.getElementById('stripeFields').style.display = (method === 'Card') ? '' : 'none';
         document.getElementById('paypalFields').style.display = (method === 'PayPal') ? '' : 'none';
+        document.getElementById('paynowFields').style.display = (method === 'PayNow') ? '' : 'none';
         document.getElementById('bankFields').style.display = (method === 'BankTransfer') ? '' : 'none';
 
         // Only show normal submit for BankTransfer
-        document.getElementById('confirmBtn').style.display =
-            (method === 'BankTransfer') ? '' : 'none';
-    }
+        document.getElementById('confirmBtn').style.display = (method === 'BankTransfer') ? '' : 'none';
+        }
 
-    document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function() {
         const paymentMethodEl = document.getElementById('paymentMethod');
         const checkoutForm = document.getElementById('checkoutForm');
 
@@ -175,93 +178,117 @@
             togglePaymentFields(this.value);
         });
 
-        // Prevent accidental form submit (e.g. Enter key) for Stripe/PayPal
+        // Prevent accidental form submit (Enter key) for Stripe/PayPal/PayNow
         checkoutForm.addEventListener('submit', function(e) {
             const method = paymentMethodEl.value;
             if (method !== 'BankTransfer') e.preventDefault();
         });
 
-        // Stripe button -> create checkout session -> redirect to Stripe-hosted URL
-        document.getElementById('stripePayButton').addEventListener('click', async () => {
+        // Stripe button -> create checkout session -> redirect
+        const stripeBtn = document.getElementById('stripePayButton');
+        if (stripeBtn) {
+            stripeBtn.addEventListener('click', async () => {
             try {
                 const resp = await fetch('/checkout/create-stripe-session', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({})
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({})
                 });
 
-                const data = await resp.json();
+                const data = await resp.json().catch(() => ({}));
                 if (!resp.ok || !data.url) {
-                    alert(data.error || 'Stripe session creation failed.');
-                    return;
+                alert(data.error || 'Stripe session creation failed.');
+                return;
                 }
-
                 window.location.href = data.url;
             } catch (e) {
                 console.error(e);
                 alert('Stripe error. Check console.');
             }
-        });
-    });
-</script>
+            });
+        }
 
-<!-- PayPal JS SDK (Buttons) -->
-<script src="https://www.paypal.com/sdk/js?client-id=<%= paypalClientId %>&currency=SGD"></script>
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
+        // HitPay PayNow -> create payment request -> redirect to checkout url
+        const hitpayBtn = document.getElementById('hitpayPayNowBtn');
+        const hitpayStatus = document.getElementById('hitpayStatus');
+
+        if (hitpayBtn) {
+            hitpayBtn.addEventListener('click', async () => {
+            hitpayBtn.disabled = true;
+            hitpayStatus.textContent = 'Redirecting to HitPay...';
+
+            try {
+                const resp = await fetch('/api/hitpay/create-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({})
+                });
+
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok || !data.url) {
+                hitpayStatus.textContent = data.error || 'Failed to create HitPay payment.';
+                hitpayBtn.disabled = false;
+                return;
+                }
+
+                window.location.href = data.url;
+            } catch (e) {
+                console.error(e);
+                hitpayStatus.textContent = 'HitPay error. Check console.';
+                hitpayBtn.disabled = false;
+            }
+            });
+        }
+        });
+    </script>
+
+    <!-- PayPal JS SDK + Buttons -->
+    <script src="https://www.paypal.com/sdk/js?client-id=<%= paypalClientId %>&currency=SGD"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
         if (!window.paypal) return;
 
+        const container = document.getElementById('paypal-button-container');
+        if (!container) return;
+
         paypal.Buttons({
-        createOrder: async function () {
+            createOrder: async function() {
             const res = await fetch('/api/paypal/create-order', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-            // no need to send amount; server reads session cart
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({})
             });
 
-            const data = await res.json().catch(() => ({}));
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(body.message || body.error || 'PayPal create-order failed');
+            if (!body.id) throw new Error('Server did not return PayPal order id');
+            return body.id; // PayPal JS SDK expects you to return the order id [web:225]
+            },
 
-            if (!res.ok) {
-            console.error('PayPal create-order failed:', res.status, data);
-            throw new Error(data.message || data.error || 'PayPal create-order failed');
-            }
-
-            if (!data.id) {
-            console.error('Server did not return order id:', data);
-            throw new Error('Server did not return order id');
-            }
-
-            return data.id;
-        },
-
-        onApprove: async function (data) {
+            onApprove: async function(data) {
             const res = await fetch('/api/paypal/capture-order', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orderID: data.orderID })
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ orderId: data.orderID })
             });
 
-            const result = await res.json().catch(() => ({}));
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(body.message || body.error || 'PayPal capture failed');
 
-            if (!res.ok) {
-            console.error('PayPal capture-order failed:', res.status, result);
-            throw new Error(result.message || result.error || 'PayPal capture failed');
-            }
+            if (body.redirectUrl) window.location.href = body.redirectUrl;
+            else window.location.href = '/orders';
+            },
 
-            if (result && result.redirectUrl) {
-            window.location.href = result.redirectUrl;
-            } else {
-            window.location.href = '/orders';
-            }
-        },
-
-        onError: function (err) {
+            onError: function(err) {
             console.error('PayPal Buttons error:', err);
             alert(err && err.message ? err.message : 'PayPal error. Check console.');
-        }
+            }
         }).render('#paypal-button-container');
-    });
-</script>
-
-</body>
-</html>
+        });
+    </script>
+    </body>
+    </html>

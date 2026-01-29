@@ -7,6 +7,9 @@
     const nodemailer = require('nodemailer');
     const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
+    // PayPal service
+    const paypalService = require('../services/paypal');
+
     /**
      * Helper: format JS Date -> MySQL DATETIME 'YYYY-MM-DD HH:mm:ss'
      */
@@ -43,11 +46,9 @@
 
         doc.pipe(stream);
 
-        // Header
         doc.fontSize(26).font('Helvetica-Bold').text('SUPERMARKET', { align: 'center' });
         doc.moveDown(0.2);
 
-        // Date below title
         doc
         .fontSize(12)
         .font('Helvetica')
@@ -56,7 +57,6 @@
         .fillColor('#000')
         .moveDown(0.2);
 
-        // Official Receipt subtitle
         doc
         .fontSize(12)
         .font('Helvetica')
@@ -65,12 +65,10 @@
         .fillColor('#000')
         .moveDown(0.6);
 
-        // Divider
         doc.strokeColor('#333').lineWidth(1);
         doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
         doc.moveDown(0.4);
 
-        // Receipt details
         doc.fontSize(12).font('Helvetica');
         doc.text(`Receipt #: ${order.id}`);
         doc.text(`Customer: ${user.username}`);
@@ -78,11 +76,9 @@
         doc.text(`Payment Method: ${order.paymentMethod}`);
         doc.moveDown(0.6);
 
-        // Divider
         doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
         doc.moveDown(0.5);
 
-        // Items table header
         const itemStartY = doc.y;
         doc.fontSize(12).font('Helvetica-Bold');
         doc
@@ -93,12 +89,10 @@
 
         doc.moveDown(0.7);
 
-        // Divider under header
         doc.strokeColor('#ddd').lineWidth(0.5);
         doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
         doc.moveDown(0.3);
 
-        // Items
         doc.fontSize(12).font('Helvetica').fillColor('#000');
         (order.items || []).forEach((item) => {
         const lineTotal = (Number(item.price) * item.quantity).toFixed(2);
@@ -113,12 +107,10 @@
         doc.moveDown(0.5);
         });
 
-        // Divider
         doc.strokeColor('#333').lineWidth(1);
         doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
         doc.moveDown(0.4);
 
-        // Total
         doc.fontSize(12).font('Helvetica-Bold').fillColor('#1e7e34');
         const totalY = doc.y;
         doc
@@ -128,12 +120,10 @@
 
         doc.fillColor('#000').moveDown(1.5);
 
-        // Divider
         doc.strokeColor('#ddd').lineWidth(0.5);
         doc.moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
         doc.moveDown(0.6);
 
-        // Footer
         doc
         .fontSize(12)
         .font('Helvetica-Oblique')
@@ -152,7 +142,6 @@
 
     /**
      * Nodemailer transporter (singleton).
-     * Uses Gmail App Password stored in env vars.
      */
     let mailTransporter = null;
 
@@ -192,6 +181,17 @@
     return typeof s === 'string' && /^\S+@\S+\.\S+$/.test(s.trim());
     }
 
+    // PayPal helpers
+    function extractPaypalCaptureId(captureResponse) {
+    try {
+        const pu = captureResponse?.purchase_units?.[0];
+        const cap = pu?.payments?.captures?.[0];
+        return cap?.id || null;
+    } catch {
+        return null;
+    }
+    }
+
     module.exports = {
     showCheckout(req, res) {
         const cart = req.session.cart || [];
@@ -205,6 +205,50 @@
         paypalClientId: process.env.PAYPAL_CLIENT_ID,
         errors: req.flash('error'),
         });
+    },
+
+    async createPaypalOrder(req, res) {
+        try {
+        const cart = req.session.cart || [];
+        const total = cart.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
+
+        if (!cart.length || !Number.isFinite(total) || total <= 0) {
+            return res.status(400).json({ error: 'Cart is empty or total invalid' });
+        }
+
+        const order = await paypalService.createOrder(total, 'SGD');
+        return res.json({ id: order.id });
+        } catch (e) {
+        console.error('createPaypalOrder error:', e);
+        return res.status(500).json({ error: e?.message || 'PayPal create order failed' });
+        }
+    },
+
+    async capturePaypalOrder(req, res) {
+        try {
+        const orderId = req.body?.orderId;
+
+        if (!orderId || typeof orderId !== 'string') {
+            return res.status(400).json({ error: 'Missing orderId' });
+        }
+
+        const capture = await paypalService.captureOrder(orderId);
+        const captureId = extractPaypalCaptureId(capture);
+
+        req.session.lastPaypalCapturedOrderID = orderId;
+        req.session.lastPaypalCaptureId = captureId;
+
+        return res.json({ ok: true, orderId, captureId, redirectUrl: '/checkout/paypal/success' });
+        } catch (e) {
+        console.error('capturePaypalOrder error:', e);
+        return res.status(500).json({ error: e?.message || 'PayPal capture failed' });
+        }
+    },
+
+    async paypalSuccess(req, res) {
+        req.body = req.body || {};
+        req.body.paymentMethod = 'PayPal';
+        return this.confirmOrder(req, res);
     },
 
     confirmOrder: async function (req, res) {
@@ -236,6 +280,7 @@
             : [user.id, JSON.stringify(cart), total, paymentMethod, orderDate, 'paid'],
         async (err, result) => {
             if (err) {
+            console.error(err);
             req.flash('error', 'Could not save order');
             return res.redirect('/checkout');
             }
@@ -265,6 +310,85 @@
 
             const orderId = result.insertId;
 
+            // Save PayPal payment IDs to payment table
+            if (paymentMethod === 'PayPal') {
+            const paypalOrderId = req.session.lastPaypalCapturedOrderID;
+            const paypalCaptureId = req.session.lastPaypalCaptureId;
+
+            delete req.session.lastPaypalCapturedOrderID;
+            delete req.session.lastPaypalCaptureId;
+
+            db.query(
+                `INSERT INTO payment
+                (order_id, payment_method, payment_status, transaction_id, amount, paid_datetime,
+                provider, provider_order_id, provider_payment_id, currency, raw_response)
+                VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)`,
+                [
+                orderId,
+                'PayPal',
+                'paid',
+                paypalCaptureId || null,
+                total,
+                'PAYPAL',
+                paypalOrderId || null,
+                paypalCaptureId || null,
+                'SGD',
+                null,
+                ],
+                (payErr) => {
+                if (payErr) console.error('PayPal payment insert failed:', payErr);
+                else console.log('PayPal payment saved:', { orderId, paypalOrderId, paypalCaptureId });
+                }
+            );
+            }
+
+            // Save HitPay PayNow payment IDs to payment table
+            // HitPay Payment Request id is the request "id" (payment_request_id). [web:204]
+            if (paymentMethod === 'PayNow (HitPay)') {
+            const providerOrderId =
+                req.session.lastProviderOrderId ||
+                req.session.lastHitpayPaymentRequestId ||
+                null;
+
+            const providerPaymentId =
+                req.session.lastProviderPaymentId ||
+                req.session.lastHitpayPaymentRequestId ||
+                null;
+
+            const currency = req.session.lastProviderCurrency || 'SGD';
+
+            delete req.session.lastProvider;
+            delete req.session.lastProviderOrderId;
+            delete req.session.lastProviderPaymentId;
+            delete req.session.lastProviderCurrency;
+            delete req.session.lastHitpayPaymentRequestId;
+
+            const raw = providerOrderId ? JSON.stringify({ payment_request_id: providerOrderId }) : null;
+
+            db.query(
+                `INSERT INTO payment
+                (order_id, payment_method, payment_status, transaction_id, amount, paid_datetime,
+                provider, provider_order_id, provider_payment_id, currency, raw_response)
+                VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)`,
+                [
+                orderId,
+                'PayNow (HitPay)',
+                'paid',
+                providerPaymentId || null,
+                total,
+                'HITPAY',
+                providerOrderId || null,
+                providerPaymentId || null,
+                currency,
+                raw,
+                ],
+                (payErr) => {
+                if (payErr) console.error('HitPay payment insert failed:', payErr);
+                else console.log('HitPay payment saved:', { orderId, providerOrderId, providerPaymentId });
+                }
+            );
+            }
+
             const receiptPath = path.join(__dirname, '..', 'public', 'receipts', `receipt-${orderId}.pdf`);
             const orderObj = {
             id: orderId,
@@ -277,11 +401,13 @@
             try {
             await generateReceiptPDF(orderObj, user, receiptPath);
             } catch (pdfErr) {
+            console.error(pdfErr);
             req.flash('error', 'Receipt generation failed');
             return res.redirect('/checkout');
             }
 
             CartController.clearCartAll(req, () => {});
+
             return res.render('receipt', {
             user,
             cart,
@@ -293,13 +419,6 @@
             });
         }
         );
-    },
-
-    // PayPal success: reuse confirmOrder but force paymentMethod="PayPal"
-    paypalSuccess: async function (req, res) {
-        req.body = req.body || {};
-        req.body.paymentMethod = 'PayPal';
-        return this.confirmOrder(req, res);
     },
 
     emailReceipt: async function (req, res) {
@@ -335,7 +454,10 @@
         const cart = JSON.parse(order.items || '[]');
         const total = order.total;
 
-        const tempUser = { username: (req.session.user && req.session.user.username) || 'Guest', email: userEmail };
+        const tempUser = {
+            username: (req.session.user && req.session.user.username) || 'Guest',
+            email: userEmail,
+        };
 
         const receiptPath = path.join(__dirname, '..', 'public', 'receipts', `receipt-${orderId}.pdf`);
 
@@ -355,6 +477,7 @@
             }
 
             await sendReceiptEmail({ pdfPath: receiptPath, toEmail: userEmail, orderId });
+
             return res.render('receipt', {
             user: req.session.user || tempUser,
             cart,
@@ -381,23 +504,18 @@
     history(req, res) {
         const user = req.session.user;
 
-        db.query(
-        'SELECT * FROM orders WHERE userId=? AND status=? ORDER BY orderDate DESC',
-        [user.id, 'paid'],
-        (err, orders) => {
-            if (err) return res.status(500).json({ error: 'Database error', details: err });
+        db.query('SELECT * FROM orders WHERE userId=? AND status=? ORDER BY orderDate DESC', [user.id, 'paid'], (err, orders) => {
+        if (err) return res.status(500).json({ error: 'Database error', details: err });
 
-            orders.forEach((order) => {
+        orders.forEach((order) => {
             order.items = JSON.parse(order.items || '[]');
             order.receiptLink = `/receipts/receipt-${order.id}.pdf`;
-            });
+        });
 
-            res.render('orderHistory', { user, orders });
-        }
-        );
+        res.render('orderHistory', { user, orders });
+        });
     },
 
-    // Stripe success - verify payment & generate receipt
     showReceiptSuccess: async function (req, res) {
         const sessionId = req.query.session_id;
         if (!sessionId) return res.redirect('/cart');
@@ -441,6 +559,32 @@
             CartController.clearCartAll(req, () => {});
 
             const orderId = result.insertId;
+            const stripeSessionId = session.id;
+            const stripePaymentIntentId = session.payment_intent;
+
+            db.query(
+                `INSERT INTO payment
+                (order_id, payment_method, payment_status, transaction_id, amount, paid_datetime,
+                provider, provider_order_id, provider_payment_id, currency, raw_response)
+                VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)`,
+                [
+                orderId,
+                'Stripe Card',
+                'paid',
+                stripePaymentIntentId || stripeSessionId,
+                total,
+                'STRIPE',
+                stripeSessionId,
+                stripePaymentIntentId || null,
+                session.currency || 'usd',
+                null,
+                ],
+                (payErr) => {
+                if (payErr) console.error('Stripe payment insert failed:', payErr);
+                else console.log('Stripe payment saved:', { orderId, stripeSessionId, stripePaymentIntentId });
+                }
+            );
+
             const receiptPath = path.join(__dirname, '..', 'public', 'receipts', `receipt-${orderId}.pdf`);
 
             try {
