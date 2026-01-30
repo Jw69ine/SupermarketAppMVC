@@ -96,7 +96,6 @@
                 <option value="Card">Credit/Debit Card (Stripe)</option>
                 <option value="PayPal">PayPal</option>
                 <option value="PayNow">PayNow (HitPay)</option>
-                <option value="BankTransfer">Bank Transfer</option>
             </select>
             </div>
 
@@ -138,19 +137,11 @@
             </div>
             </div>
 
-            <!-- Bank -->
-            <div id="bankFields" style="display:none">
-            <div class="mb-2">
-                <label class="form-label text-primary">
-                Transfer to: <span class="fw-bold">Bank XYZ, #123-456-789</span>
-                </label>
-            </div>
-            <input type="file" name="bankScreenshot" class="form-control form-control-lg mb-2" />
-            <small class="text-muted ms-1">Upload screenshot of transfer/receipt.</small>
-            </div>
-
             <div class="d-flex mt-4 gap-2">
-            <button id="confirmBtn" type="submit" class="btn btn-success flex-fill shadow-sm">Pay & Confirm Order</button>
+            <!-- No normal submit now (because no BankTransfer). Keep it hidden always. -->
+            <button id="confirmBtn" type="submit" class="btn btn-success flex-fill shadow-sm" style="display:none;">
+                Pay & Confirm Order
+            </button>
             <a href="/cart" class="btn btn-secondary flex-fill">Back to Cart</a>
             </div>
         </form>
@@ -162,10 +153,8 @@
         document.getElementById('stripeFields').style.display = (method === 'Card') ? '' : 'none';
         document.getElementById('paypalFields').style.display = (method === 'PayPal') ? '' : 'none';
         document.getElementById('paynowFields').style.display = (method === 'PayNow') ? '' : 'none';
-        document.getElementById('bankFields').style.display = (method === 'BankTransfer') ? '' : 'none';
-
-        // Only show normal submit for BankTransfer
-        document.getElementById('confirmBtn').style.display = (method === 'BankTransfer') ? '' : 'none';
+        // confirmBtn stays hidden (no BankTransfer flow)
+        document.getElementById('confirmBtn').style.display = 'none';
         }
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -178,10 +167,9 @@
             togglePaymentFields(this.value);
         });
 
-        // Prevent accidental form submit (Enter key) for Stripe/PayPal/PayNow
+        // Always prevent form submit (Stripe/PayPal/PayNow handled by JS)
         checkoutForm.addEventListener('submit', function(e) {
-            const method = paymentMethodEl.value;
-            if (method !== 'BankTransfer') e.preventDefault();
+            e.preventDefault();
         });
 
         // Stripe button -> create checkout session -> redirect
@@ -209,7 +197,7 @@
             });
         }
 
-        // HitPay PayNow -> create payment request -> redirect to checkout url
+        // HitPay PayNow -> create payment request -> redirect to checkout url [web:180][web:183]
         const hitpayBtn = document.getElementById('hitpayPayNowBtn');
         const hitpayStatus = document.getElementById('hitpayStatus');
 
@@ -265,7 +253,7 @@
             const body = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(body.message || body.error || 'PayPal create-order failed');
             if (!body.id) throw new Error('Server did not return PayPal order id');
-            return body.id; // PayPal JS SDK expects you to return the order id [web:225]
+            return body.id; // PayPal expects you to return an order id from createOrder [web:225]
             },
 
             onApprove: async function(data) {

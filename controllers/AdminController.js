@@ -1,4 +1,6 @@
     // controllers/AdminController.js
+    require('dotenv').config();
+
     const Product = require('../models/Product');
     const Order = require('../models/Order');
 
@@ -50,6 +52,44 @@
     });
     }
 
+    // ---------------- HitPay helpers ----------------
+    function getHitpayBaseUrl() {
+    return process.env.HITPAY_BASE_URL || 'https://api.sandbox.hit-pay.com';
+    }
+
+    function requireHitpayEnv() {
+    if (!process.env.HITPAY_API_KEY) throw new Error('Missing HITPAY_API_KEY in .env');
+    }
+
+    // Get payment request status (to verify status and attempt to extract payment_id). [page:1]
+    async function getHitpayPaymentRequestStatus(requestId) {
+    requireHitpayEnv();
+
+    const resp = await fetch(`${getHitpayBaseUrl()}/v1/payment-requests/${encodeURIComponent(requestId)}`, {
+        method: 'GET',
+        headers: { 'X-BUSINESS-API-KEY': process.env.HITPAY_API_KEY },
+    });
+
+    const data = await resp.json().catch(() => ({}));
+    return { ok: resp.ok, data };
+    }
+
+    // Try to extract a refundable payment/charge id from the Payment Request object.
+    // NOTE: Different HitPay setups may expose it under different keys; this tries common shapes. [page:1]
+    function extractHitpayPaymentIdFromPaymentRequest(pr) {
+    if (!pr || typeof pr !== 'object') return null;
+
+    return (
+        pr.payment_id ||
+        pr.charge_id ||
+        pr.payment?.id ||
+        pr.charge?.id ||
+        (Array.isArray(pr.payments) ? pr.payments[0]?.id : null) ||
+        (Array.isArray(pr.charges) ? pr.charges[0]?.id : null) ||
+        null
+    );
+    }
+
     // ---------------- Utility helpers ----------------
     function safeJsonParse(s, fallback = []) {
     try {
@@ -61,12 +101,10 @@
     }
 
     function restoreStockFromOrderItems(items) {
-    // items should contain: [{ productId, quantity, ... }, ...]
-    // Restock: quantity = quantity + purchasedQty [web:53][web:54]
     const tasks = items.map(
         (item) =>
         new Promise((resolve, reject) => {
-            const productId = item.productId ?? item.id; // fallback if your cart stores id instead of productId
+            const productId = item.productId ?? item.id;
             const qty = Number(item.quantity);
 
             if (!productId || !Number.isFinite(qty) || qty <= 0) return resolve();
@@ -157,8 +195,8 @@
             return res.redirect('/admin/refunds');
             }
 
-            // payment id fallback: provider_payment_id or transaction_id
-            const paymentId = rr.provider_payment_id || rr.transaction_id;
+            // Primary ID to refund: provider_payment_id; fallback: transaction_id
+            let paymentId = rr.provider_payment_id || rr.transaction_id;
 
             if (!rr.provider || !paymentId) {
             req.flash(
@@ -174,7 +212,6 @@
             let providerRefundStatus = null;
 
             if (rr.provider === 'STRIPE') {
-                // Stripe refund create using payment_intent [web:5]
                 const refund = await stripe.refunds.create({
                 payment_intent: paymentId,
                 reason: 'requested_by_customer',
@@ -183,25 +220,80 @@
                 providerRefundId = refund.id;
                 providerRefundStatus = refund.status;
             } else if (rr.provider === 'PAYPAL') {
-                // Full refund: pass null amount (your paypal.js supports this)
                 const refund = await paypal.refundCapturedPayment(
-                paymentId, // capture_id
-                null, // full refund
+                paymentId,
+                null,
                 rr.currency || 'SGD',
                 `Refund approved by ${adminUser.username || 'admin'}`
                 );
 
                 providerRefundId = refund.id;
                 providerRefundStatus = refund.status;
+            } else if (rr.provider === 'HITPAY') {
+                requireHitpayEnv();
+
+                // Your DB currently stores payment_request_id in provider_payment_id (same as provider_order_id). [file:250]
+                // HitPay refund requires "payment_id" of successful payment (UUID). [page:0]
+                const paymentRequestId = rr.provider_order_id;
+
+                // If provider_payment_id looks like it is just payment_request_id, try to resolve the real payment_id first
+                if (paymentRequestId && rr.provider_payment_id && rr.provider_payment_id === paymentRequestId) {
+                const pr = await getHitpayPaymentRequestStatus(paymentRequestId); // [page:1]
+                if (!pr.ok) throw new Error(pr.data?.message || 'HitPay payment request lookup failed');
+
+                const status = String(pr.data?.status || '').toLowerCase();
+                if (status !== 'completed') {
+                    throw new Error('HitPay payment is not completed yet (status=' + status + ')');
+                }
+
+                const resolvedPaymentId = extractHitpayPaymentIdFromPaymentRequest(pr.data);
+                if (!resolvedPaymentId) {
+                    throw new Error(
+                    'Cannot refund HitPay: payment_id not found from payment request status response. ' +
+                    'Enable webhook to store charge/payment id.'
+                    );
+                }
+
+                // Save it back so future refunds work without extra API calls
+                await new Promise((resolve, reject) => {
+                    db.query(
+                    `UPDATE payment SET provider_payment_id=? WHERE provider='HITPAY' AND provider_order_id=?`,
+                    [resolvedPaymentId, paymentRequestId],
+                    (e) => (e ? reject(e) : resolve())
+                    );
+                });
+
+                paymentId = resolvedPaymentId;
+                }
+
+                const amount = rr.amount || rr.order_total;
+
+                const resp = await fetch(`${getHitpayBaseUrl()}/v1/refund`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-BUSINESS-API-KEY': process.env.HITPAY_API_KEY,
+                },
+                body: JSON.stringify({
+                    payment_id: paymentId,
+                    amount: amount,
+                }),
+                });
+
+                const refund = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(refund?.message || 'HitPay refund failed'); // [page:0]
+
+                providerRefundId = refund.id;
+                providerRefundStatus = refund.status; // e.g. "succeeded" [page:0]
             } else {
                 throw new Error('Unsupported provider: ' + rr.provider);
             }
 
-            // 2) Restore stock based on order items JSON
+            // 2) Restore stock
             const items = safeJsonParse(rr.order_items || '[]', []);
             await restoreStockFromOrderItems(items);
 
-            // 3) Insert refund record (if you have refunds table)
+            // 3) Insert refund record
             db.query(
                 `INSERT INTO refunds (refund_request_id, provider, provider_refund_id, amount, currency, status)
                 VALUES (?, ?, ?, ?, ?, ?)`,
@@ -237,7 +329,7 @@
                 }
             );
 
-            // 5) Email user (do not block success if email fails)
+            // 5) Email user
             try {
                 await sendRefundApprovedEmail({
                 toEmail: rr.email,

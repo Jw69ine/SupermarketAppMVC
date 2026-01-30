@@ -20,6 +20,9 @@
     const CartController = require('./controllers/CartController');
     const RefundController = require('./controllers/RefundController');
 
+    // DB (needed for webhook update)
+    const db = require('./db');
+
     // Multer setup for image uploads
     const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, 'public/images'),
@@ -245,7 +248,7 @@
     });
 
     // -------------------- HITPAY (PayNow) --------------------
-    // Create HitPay payment request and redirect customer to returned "url". [page:1]
+    // Create HitPay payment request and redirect customer to returned "url".
     app.post('/api/hitpay/create-payment', checkAuthenticated, async (req, res) => {
     try {
         requireHitpayEnv();
@@ -262,15 +265,13 @@
         const purpose = `Supermarket Order - ${req.session.user.username}`;
         const reference_number = `HP-${req.session.user.id}-${Date.now()}`;
 
-        // Note: docs show payment_methods[] and Content-Type x-www-form-urlencoded; JSON also works for many setups,
-        // but if you get issues, switch to URLSearchParams. [page:1]
         const payload = {
         amount,
         currency,
         purpose,
         reference_number,
         redirect_url: process.env.HITPAY_REDIRECT_URL,
-        webhook: process.env.HITPAY_WEBHOOK_URL, // deprecated, but still supported in doc; prefer registered webhooks. [page:1]
+        webhook: process.env.HITPAY_WEBHOOK_URL,
         payment_methods: ['paynow_online'],
         };
 
@@ -304,35 +305,56 @@
     }
     });
 
-    // Return URL (HitPay sends query arguments reference (payment request id) and status). [page:1]
+    // Return URL (polling to wait for completed)
     app.get('/hitpay/return', checkAuthenticated, async (req, res) => {
-    const reference = req.query.reference; // payment_request_id [page:1]
-    const status = String(req.query.status || '').toLowerCase(); // "completed"/... [page:1]
-
+    const reference = req.query.reference; // payment_request_id
+    const redirectStatus = String(req.query.status || '').toLowerCase();
     if (!reference) return res.redirect('/checkout?error=hitpay');
 
-    // Verify using payment request status endpoint (recommended) [page:1]
-    let paid = status === 'completed';
+    // idempotency guard
+    req.session.hitpayProcessed = req.session.hitpayProcessed || {};
+    if (req.session.hitpayProcessed[reference]) return res.redirect('/orders');
 
-    try {
-        requireHitpayEnv();
+    requireHitpayEnv();
+
+    async function sleep(ms) {
+        return new Promise((r) => setTimeout(r, ms));
+    }
+
+    async function getHitpayStatus() {
         const resp = await fetch(`${getHitpayBaseUrl()}/v1/payment-requests/${encodeURIComponent(reference)}`, {
         method: 'GET',
         headers: { 'X-BUSINESS-API-KEY': process.env.HITPAY_API_KEY },
         });
         const data = await resp.json().catch(() => ({}));
-        const apiStatus = String(data.status || '').toLowerCase();
-        if (apiStatus) paid = apiStatus === 'completed';
-    } catch (e) {
-        console.error('HitPay verify status failed:', e);
+        return { ok: resp.ok, status: String(data.status || '').toLowerCase(), raw: data };
     }
 
-    if (!paid) return res.redirect('/checkout?status=' + encodeURIComponent(status || 'unknown'));
+    let finalStatus = redirectStatus;
 
-    // Set session for CheckoutController to insert payment row
+    for (let i = 0; i < 5; i++) {
+        try {
+        const result = await getHitpayStatus();
+        if (result.ok && result.status) finalStatus = result.status;
+        if (finalStatus === 'completed') break;
+        } catch (e) {
+        console.error('HitPay status poll error:', e);
+        }
+        await sleep(2000);
+    }
+
+    if (finalStatus !== 'completed') {
+        return res.redirect('/checkout?hitpay=processing');
+    }
+
+    // Mark processed BEFORE creating order to prevent duplicates
+    req.session.hitpayProcessed[reference] = true;
+
+    // Save payment request id into payment row now;
+    // webhook will later update provider_payment_id with charge.id for refunds. [page:1]
     req.session.lastProvider = 'HITPAY';
-    req.session.lastProviderOrderId = reference;
-    req.session.lastProviderPaymentId = reference;
+    req.session.lastProviderOrderId = reference;      // payment_request_id
+    req.session.lastProviderPaymentId = reference;    // temp (will be replaced by webhook)
     req.session.lastProviderCurrency = 'SGD';
     req.session.lastHitpayPaymentRequestId = reference;
 
@@ -340,13 +362,13 @@
     return CheckoutController.confirmOrder(req, res);
     });
 
-    // Webhook (payment completed) - validates Hitpay-Signature and contains status=completed. [page:1]
+    // Webhook: store charge.id so refund API can use it. [page:1]
     app.post('/webhooks/hitpay', async (req, res) => {
     try {
         requireHitpayEnv();
 
         const signature = req.header('Hitpay-Signature');
-        const rawBody = req.body; // Buffer (because we used express.raw above)
+        const rawBody = req.body; // Buffer
 
         if (!verifyHitpaySignature(rawBody, signature, process.env.HITPAY_SALT)) {
         return res.status(401).send('Invalid signature');
@@ -354,8 +376,42 @@
 
         const event = JSON.parse(rawBody.toString('utf8'));
 
-        // For production: mark order paid ONLY after webhook is validated. [page:1]
+        // HitPay says webhooks can be different object types; charge.created triggers on successful payment. [page:1]
+        const eventObject = req.header('Hitpay-Event-Object'); // e.g. "charge" [page:1]
+        const eventType = req.header('Hitpay-Event-Type');     // created/updated [page:1]
+
+        // For refunding, we need the CHARGE id (UUID) to use as refund payment_id. [page:0][page:1]
+        const chargeId = event?.id || null;
+
+        // For Payment Request flows, payload may include payment_request_id (sometimes nested). [page:1]
+        const paymentRequestId =
+        event?.payment_request_id ||
+        event?.payment_request?.id ||
+        null;
+
+        const status = String(event?.status || '').toLowerCase();
+        const isPaid = status === 'succeeded' || status === 'completed';
+
+        // If we can't map, just ACK so HitPay stops retrying.
+        if (!chargeId || !paymentRequestId) {
+        console.log('HitPay webhook received (no mapping fields):', { eventObject, eventType });
         return res.status(200).send('OK');
+        }
+
+        // Update payment table: set provider_payment_id = chargeId (this is what refund API needs). [page:0]
+        db.query(
+        `UPDATE payment
+        SET provider_payment_id = ?, payment_status = ?
+        WHERE provider = 'HITPAY' AND provider_order_id = ?`,
+        [chargeId, isPaid ? 'paid' : 'pending', paymentRequestId],
+        (err, result) => {
+            if (err) {
+            console.error('HitPay webhook db update failed:', err);
+            return res.status(500).send('DB error');
+            }
+            return res.status(200).send('OK');
+        }
+        );
     } catch (e) {
         console.error('HitPay webhook error:', e);
         return res.status(500).send('Server error');
@@ -404,7 +460,6 @@
     });
 
     app.post('/login', (req, res) => {
-    const db = require('./db');
     const { email, password } = req.body;
 
     if (!email || !password) {
